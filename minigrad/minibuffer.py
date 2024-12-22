@@ -5,12 +5,12 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, order=True)
 class DType:
-  priority: int  # this determines when things get upcasted
-  itemsize: int
-  name: str
-  np: Optional[type]  # TODO: someday this will be removed with the "remove numpy" project
-  sz: int = 1
-  def __repr__(self): return f"dtypes.{self.name}"
+    priority: int  # this determines when things get upcasted
+    itemsize: int
+    name: str
+    np: Optional[type]  # TODO: someday this will be removed with the "remove numpy" project
+    sz: int = 1
+    def __repr__(self): return f"dtypes.{self.name}"
 
 class dtypes:
     float32 = DType(0, 4, "float32", np.float32)
@@ -19,6 +19,10 @@ class UOps(Enum):
     # Unary
     NOOP = auto()
     NEG = auto()
+    SQRT = auto()
+    EXP = auto()
+    LOG = auto()
+    SIN = auto()
 
     # Binary
     ADD = auto()
@@ -41,11 +45,16 @@ class UOps(Enum):
     RESHAPE = auto()
     PERMUTE = auto()
     EXPAND = auto()
+    SQUEEZE = auto()
+    PAD = auto()
+    SLICE = auto()
+    STRIDE = auto()
 
     # Load
     EMPTY = auto()
     CONST = auto()
     RAND = auto()
+    RANDN = auto()
 
 class MiniBuffer:
     def __init__(self, data:np.ndarray, dtype:DType=dtypes.float32):
@@ -66,7 +75,9 @@ class MiniBuffer:
         if op == UOps.EMPTY:
             ret = np.empty(shape, dtype=dtype.np)
         elif op == UOps.RAND:
-            ret = np.random.default_rng(arg).random(shape, dtype=dtype.np)
+            ret = np.random.rand(*shape)
+        elif op == UOps.RANDN:
+            ret = np.random.randn(*shape)
         elif op == UOps.CONST:
             ret = np.full(shape, arg, dtype=dtype.np)
         else:
@@ -82,6 +93,14 @@ class MiniBuffer:
             ret = self.data
         elif op == UOps.NEG:
             ret = -self.data
+        elif op == UOps.SQRT:
+            ret = self.data ** 0.5
+        elif op == UOps.EXP:
+            ret = np.exp(self.data)
+        elif op == UOps.LOG:
+            ret = np.log(self.data)
+        elif op == UOps.SIN:
+            ret = np.sin(self.data)
         elif op == UOps.ADD:
             ret = self.data + sources[0].data
         elif op == UOps.SUB:
@@ -100,7 +119,8 @@ class MiniBuffer:
             ret = np.where(self.data, sources[0].data, sources[1].data)
         else:
             raise NotImplementedError(op)
-        return MiniBuffer(ret) # TODO explicit dtype setting
+        new_dtype = max([s.dtype for s in sources] + [self.dtype])
+        return MiniBuffer(ret, new_dtype)
 
     def reduce_ops(self, op, dims):
         # assert len(self.shape) == len(new_shape), 'New shape must be of same dimension as current shape'
@@ -122,6 +142,14 @@ class MiniBuffer:
             ret = self.data.transpose(arg)
         elif op == UOps.EXPAND:
             ret = np.broadcast_to(self.data, arg)
+        elif op == UOps.SQUEEZE:
+            ret = self.data.squeeze(arg)
+        elif op == UOps.PAD:
+            ret = np.pad(self.data, arg)
+        elif op == UOps.SLICE:
+            ret = self.data[tuple(slice(*one_arg) for one_arg in arg)]
+        elif op == UOps.STRIDE:
+            ret = self.data[tuple(slice(None, None, one_arg) for one_arg in arg)]
         else:
             raise NotImplementedError(op)
         return MiniBuffer(ret)
